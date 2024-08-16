@@ -1,254 +1,243 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <fstream>
-#include <memory>
-#include <stdexcept>
-
+#include <bits/stdc++.h>
 using namespace std;
 
-// Base class for Account
+// Base Account Class
 class Account {
 public:
-    Account(string number, double balance)
-        : number(number), balance(balance) {}
+    Account(int number, double balance) : accountNumber(number), balance(balance) {}
 
-    virtual ~Account() {}
+    virtual ~Account() = default;
 
-    string getNumber() const { return number; }
+    int getAccountNumber() const { return accountNumber; }
     double getBalance() const { return balance; }
 
-    virtual void display() const = 0;
-
-    void deposit(double amount) {
-        if (amount <= 0) throw invalid_argument("Deposit amount must be positive.");
+    virtual void deposit(double amount) {
+        if (amount <= 0) {
+            throw invalid_argument("Deposit amount must be positive.");
+        }
         balance += amount;
     }
 
-    void withdraw(double amount) {
-        if (amount <= 0) throw invalid_argument("Withdrawal amount must be positive.");
-        if (amount > balance) throw runtime_error("Insufficient funds.");
+    virtual void withdraw(double amount) {
+        if (amount <= 0) {
+            throw invalid_argument("Withdrawal amount must be positive.");
+        }
+        if (amount > balance) {
+            throw runtime_error("Insufficient funds.");
+        }
         balance -= amount;
     }
 
+    virtual string getAccountType() const = 0;
+
+    virtual void display() const {
+        cout << "Account Number: " << accountNumber
+             << ", Type: " << getAccountType()
+             << ", Balance: $" << balance << endl;
+    }
+
 protected:
-    string number;
+    int accountNumber;
     double balance;
 };
 
-// Derived class for Savings Account
+// Savings Account Class
 class SavingsAccount : public Account {
 public:
-    SavingsAccount(string number, double balance)
-        : Account(number, balance) {}
+    SavingsAccount(int number, double balance) : Account(number, balance) {}
 
-    void display() const override {
-        cout << "Savings Account Number: " << number << ", Balance: $" << balance << endl;
-    }
+    string getAccountType() const override { return "Savings"; }
 };
 
-// Derived class for Current Account
+// Current Account Class
 class CurrentAccount : public Account {
 public:
-    CurrentAccount(string number, double balance)
-        : Account(number, balance) {}
+    CurrentAccount(int number, double balance) : Account(number, balance) {}
 
-    void display() const override {
-        cout << "Current Account Number: " << number << ", Balance: $" << balance << endl;
-    }
+    string getAccountType() const override { return "Current"; }
 };
 
-// Class for Customer
-class Customer {
-public:
-    Customer(string name, string id)
-        : name(name), id(id) {}
-
-    string getName() const { return name; }
-    string getID() const { return id; }
-
-    void display() const {
-        cout << "Customer Name: " << name << ", ID: " << id << endl;
-    }
-
-private:
-    string name;
-    string id;
-};
-
-// Class for Transaction
+// Transaction Class
 class Transaction {
 public:
-    Transaction(shared_ptr<Account> account, double amount, const string& type)
-        : account(account), amount(amount), type(type) {}
+    Transaction(int fromAccount, int toAccount, double amount, const string& type)
+        : fromAccountNumber(fromAccount), toAccountNumber(toAccount), amount(amount), type(type) {
+        time(&timestamp);
+    }
 
-    void display() const {
-        cout << "Transaction Type: " << type << ", Amount: $" << amount << ", Account: " << account->getNumber() << endl;
+    string toString() const {
+        char timeStr[20];
+        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", localtime(&timestamp));
+        ostringstream oss;
+        oss << "Transaction: " << type
+            << " from Account " << fromAccountNumber
+            << " to Account " << toAccountNumber
+            << " Amount: $" << amount
+            << " Date: " << timeStr;
+        return oss.str();
     }
 
 private:
-    shared_ptr<Account> account;
+    int fromAccountNumber;
+    int toAccountNumber;
     double amount;
     string type;
+    time_t timestamp;
 };
 
-// Class for Bank
+// Bank Class
 class Bank {
 public:
-    void addAccount(shared_ptr<Account> account) {
+    ~Bank() {
+        for (auto account : accounts) {
+            delete account;
+        }
+    }
+
+    void addAccount(Account* account) {
         accounts.push_back(account);
     }
 
-    void addCustomer(shared_ptr<Customer> customer) {
-        customers.push_back(customer);
+    Account* findAccount(int accountNumber) const {
+        for (auto account : accounts) {
+            if (account->getAccountNumber() == accountNumber) {
+                return account;
+            }
+        }
+        return nullptr;
     }
 
-    void deposit(string accountNumber, double amount) {
-        auto accountIt = find_if(accounts.begin(), accounts.end(), [&](const shared_ptr<Account>& acc) {
-            return acc->getNumber() == accountNumber;
-        });
-
-        if (accountIt == accounts.end()) {
+    void deposit(int accountNumber, double amount) {
+        Account* account = findAccount(accountNumber);
+        if (!account) {
             throw runtime_error("Account not found.");
         }
-
-        (*accountIt)->deposit(amount);
-        transactions.push_back(make_shared<Transaction>(*accountIt, amount, "Deposit"));
+        account->deposit(amount);
+        transactions.push_back(Transaction(accountNumber, -1, amount, "Deposit"));
     }
 
-    void withdraw(string accountNumber, double amount) {
-        auto accountIt = find_if(accounts.begin(), accounts.end(), [&](const shared_ptr<Account>& acc) {
-            return acc->getNumber() == accountNumber;
-        });
-
-        if (accountIt == accounts.end()) {
+    void withdraw(int accountNumber, double amount) {
+        Account* account = findAccount(accountNumber);
+        if (!account) {
             throw runtime_error("Account not found.");
         }
-
-        (*accountIt)->withdraw(amount);
-        transactions.push_back(make_shared<Transaction>(*accountIt, amount, "Withdrawal"));
+        account->withdraw(amount);
+        transactions.push_back(Transaction(accountNumber, -1, amount, "Withdrawal"));
     }
 
-    void transfer(string fromAccountNumber, string toAccountNumber, double amount) {
-        auto fromAccountIt = find_if(accounts.begin(), accounts.end(), [&](const shared_ptr<Account>& acc) {
-            return acc->getNumber() == fromAccountNumber;
-        });
-
-        auto toAccountIt = find_if(accounts.begin(), accounts.end(), [&](const shared_ptr<Account>& acc) {
-            return acc->getNumber() == toAccountNumber;
-        });
-
-        if (fromAccountIt == accounts.end()) {
-            throw runtime_error("Source account not found.");
+    void transfer(int fromAccountNumber, int toAccountNumber, double amount) {
+        Account* fromAccount = findAccount(fromAccountNumber);
+        Account* toAccount = findAccount(toAccountNumber);
+        if (!fromAccount || !toAccount) {
+            throw runtime_error("One or both accounts not found.");
         }
-        if (toAccountIt == accounts.end()) {
-            throw runtime_error("Destination account not found.");
-        }
-
-        (*fromAccountIt)->withdraw(amount);
-        (*toAccountIt)->deposit(amount);
-        transactions.push_back(make_shared<Transaction>(*fromAccountIt, amount, "Transfer Out"));
-        transactions.push_back(make_shared<Transaction>(*toAccountIt, amount, "Transfer In"));
+        fromAccount->withdraw(amount);
+        toAccount->deposit(amount);
+        transactions.push_back(Transaction(fromAccountNumber, toAccountNumber, amount, "Transfer"));
     }
 
-    void saveToFile() const {
-        ofstream file("bank_data.txt");
-        if (!file.is_open()) {
-            throw runtime_error("Error opening file for writing.");
-        }
-
-        // Save accounts
-        file << "Accounts:\n";
+    void displayAccounts() const {
         for (const auto& account : accounts) {
-            file << typeid(*account).name() << "," << account->getNumber() << "," << account->getBalance() << "\n";
+            account->display();
         }
-
-        // Save customers
-        file << "Customers:\n";
-        for (const auto& customer : customers) {
-            file << customer->getName() << "," << customer->getID() << "\n";
-        }
-
-        file.close();
     }
 
-    void loadFromFile() {
-        ifstream file("bank_data.txt");
-        if (!file.is_open()) {
-            throw runtime_error("Error opening file for reading.");
+    void displayTransactions() const {
+        for (const auto& transaction : transactions) {
+            cout << transaction.toString() << endl;
         }
-
-        accounts.clear();
-        customers.clear();
-
-        string line;
-        bool readingAccounts = true;
-
-        while (getline(file, line)) {
-            if (line == "Accounts:") {
-                readingAccounts = true;
-                continue;
-            } else if (line == "Customers:") {
-                readingAccounts = false;
-                continue;
-            }
-
-            if (readingAccounts) {
-                stringstream ss(line);
-                string type, number;
-                double balance;
-                getline(ss, type, ',');
-                getline(ss, number, ',');
-                ss >> balance;
-                
-                if (type == "class SavingsAccount") {
-                    accounts.push_back(make_shared<SavingsAccount>(number, balance));
-                } else if (type == "class CurrentAccount") {
-                    accounts.push_back(make_shared<CurrentAccount>(number, balance));
-                }
-            } else {
-                stringstream ss(line);
-                string name, id;
-                getline(ss, name, ',');
-                getline(ss, id);
-                customers.push_back(make_shared<Customer>(name, id));
-            }
-        }
-
-        file.close();
     }
 
 private:
-    vector<shared_ptr<Account>> accounts;
-    vector<shared_ptr<Customer>> customers;
-    vector<shared_ptr<Transaction>> transactions;
+    vector<Account*> accounts;
+    vector<Transaction> transactions;
 };
 
-// Main function
+// Main Function
 int main() {
     Bank bank;
 
-    try {
-        bank.loadFromFile();
+    while (true) {
+        cout << "\nBanking System\n";
+        cout << "1. Create Account\n";
+        cout << "2. View Accounts\n";
+        cout << "3. Deposit\n";
+        cout << "4. Withdraw\n";
+        cout << "5. Transfer\n";
+        cout << "6. View Transactions\n";
+        cout << "7. Exit\n";
+        int choice;
+        cout << "Enter your choice: ";
+        cin >> choice;
 
-        // Add some accounts and customers for testing
-        bank.addAccount(make_shared<SavingsAccount>("S001", 1000.00));
-        bank.addAccount(make_shared<CurrentAccount>("C001", 2000.00));
-        bank.addCustomer(make_shared<Customer>("Alice", "C001"));
-        bank.addCustomer(make_shared<Customer>("Bob", "C002"));
+        if (choice == 1) {
+            int accountNumber;
+            double initialBalance;
+            char accountType;
+            cout << "Enter account number: ";
+            cin >> accountNumber;
+            cout << "Enter initial balance: ";
+            cin >> initialBalance;
+            cout << "Enter account type (S for Savings, C for Current): ";
+            cin >> accountType;
 
-        // Perform some operations
-        bank.deposit("S001", 500.00);
-        bank.withdraw("C001", 300.00);
-        bank.transfer("S001", "C001", 200.00);
-
-        // Save bank data to file
-        bank.saveToFile();
-
-    } catch (const runtime_error& e) {
-        cerr << "Runtime error: " << e.what() << endl;
-    } catch (const invalid_argument& e) {
-        cerr << "Invalid argument: " << e.what() << endl;
+            if (accountType == 'S') {
+                bank.addAccount(new SavingsAccount(accountNumber, initialBalance));
+            } else if (accountType == 'C') {
+                bank.addAccount(new CurrentAccount(accountNumber, initialBalance));
+            } else {
+                cout << "Invalid account type." << endl;
+            }
+        } else if (choice == 2) {
+            bank.displayAccounts();
+        } else if (choice == 3) {
+            int accountNumber;
+            double amount;
+            cout << "Enter account number: ";
+            cin >> accountNumber;
+            cout << "Enter amount: ";
+            cin >> amount;
+            try {
+                bank.deposit(accountNumber, amount);
+                cout << "Deposited $" << amount << " to account " << accountNumber << endl;
+            } catch (const exception& e) {
+                cout << "Error: " << e.what() << endl;
+            }
+        } else if (choice == 4) {
+            int accountNumber;
+            double amount;
+            cout << "Enter account number: ";
+            cin >> accountNumber;
+            cout << "Enter amount: ";
+            cin >> amount;
+            try {
+                bank.withdraw(accountNumber, amount);
+                cout << "Withdrew $" << amount << " from account " << accountNumber << endl;
+            } catch (const exception& e) {
+                cout << "Error: " << e.what() << endl;
+            }
+        } else if (choice == 5) {
+            int fromAccount, toAccount;
+            double amount;
+            cout << "Enter from account number: ";
+            cin >> fromAccount;
+            cout << "Enter to account number: ";
+            cin >> toAccount;
+            cout << "Enter amount: ";
+            cin >> amount;
+            try {
+                bank.transfer(fromAccount, toAccount, amount);
+                cout << "Transferred $" << amount << " from account " << fromAccount << " to account " << toAccount << endl;
+            } catch (const exception& e) {
+                cout << "Error: " << e.what() << endl;
+            }
+        } else if (choice == 6) {
+            bank.displayTransactions();
+        } else if (choice == 7) {
+            break;
+        } else {
+            cout << "Invalid choice. Please try again." << endl;
+        }
     }
 
     return 0;
